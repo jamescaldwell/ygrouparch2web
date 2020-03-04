@@ -2,7 +2,6 @@
     "config_id": "development",
     "app_name": "ygrouparchiveweb",
     "app_desc": "my app desc",
-    "node_port": 3000,
     "json_indentation": 4,
     "database": "ygroupdb",
     "db_host": "localhost",
@@ -12,5 +11,5 @@
     "messagetable": "ymessage",
     "useMessageIdForDb": true,
     "createDbIfNotExists": true,
-    "resetTables": false
+    "resetTables": true
 }
