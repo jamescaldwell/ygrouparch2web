@@ -1,15 +1,4 @@
 <?php
-
-require_once __DIR__.'/vendor/autoload.php';
-
-set_include_path(".:/usr/share/php:./pear/share/pear");
-require_once 'Mail/Mbox.php';
-//use ZBateson\MailMimeParser\MailMimeParser;
-//use ZBateson\MailMimeParser\Message;
-//use ZBateson\MailMimeParser\Header\AddressHeader;
-
-$parser = new PhpMimeMailParser\Parser();
-
 $path = $argv[1];
 //echo "Path=$path\n";
 if (!$path && !file_exists($path)) {
@@ -20,17 +9,21 @@ if (!$path && !file_exists($path)) {
 // read config file_exists
 $jsonStr = file_get_contents("./config/config.json");
 $config = json_decode($jsonStr);
-
+$filesCollection = array();
 if (is_dir($path)) {
-  $filesCollection = array_merge(array_diff(scandir($path), array('..', '.')));
-  $count = count($filesCollection);
-  for ($i = 0 ; $i < $count; $i++) {
-    $filesCollection[$i] = $path . DIRECTORY_SEPARATOR . $filesCollection[$i];
+  $tempDir = scandir($path);
+  echo "Num files " . count($tempDir) . "\n";
+  foreach ($tempDir as $tf) {
+    if (strpos($tf, ".json") !== FALSE && strpos($tf, "raw") === FALSE) {
+      if (strpos($tf, ".") == 0)
+        echo "$tf shouldn't be in there\n";
+      array_push($filesCollection, $path . $tf);
+    }
   }
 } else {
   // just process single file
-  $filesCollection = array();
-  array_push($filesCollection, $path);
+  echo "Path needs to be a directory\n";
+  die("Usage: php -f singleproc.php <path>");
 }
 
 echo "Connect to db..." . $config->database;
@@ -91,73 +84,39 @@ $message_ids = array(); // keep track of message ids
 $userIds = array();     // associative array of rawEmail => uid of table
 $lastMessageNumber = 0;
 // parse through each mbox file_exists
-foreach ($filesCollection as $mboxFile) {
-  echo "Processing file $mboxFile----------------------------------\n";
-  $mbox = new Mail_Mbox($mboxFile);
-  $res = $mbox->open();
-  if ($res !== true) {
-    echo $res . "\n";
-  }
-  echo "Num messages:" . $mbox->size() . "\n";
-  for ($n = 0; $n < $mbox->size(); $n++) {
-//    if ($n > 10) continue;
-    echo "=============================\n";
-    $rawMsg = $mbox->get($n);
-    $parser->setText($rawMsg);
+foreach ($filesCollection as $emailFile) {
+  echo "Processing file $emailFile----------------------------------\n";
+  $json = json_decode(file_get_contents($emailFile));
+  $messageId = $json->msgId;
+  echo "Message ID: $messageId\n";
+  $subject = $json->subject;
+  echo "Subject: $subject\n";
+  $dateSql = date("Y-m-d H:i:s", $json->postDate);
+  $body = $json->messageBody;  // <= body
+  $email = html_entity_decode(strtolower($json->from));
+  $author = $json->authorName;
+  echo "From: $email => $author\n";
+//  $fromObf = obfuscateEmail($email, $rawHeaderFrom);
+  $fromObf = $email;
 
-    $messageId = $parser->getHeader('Message-ID');
-    $midp = explode(".", $messageId);
-    if (count($midp) > 2) {
-      $messageNum = $midp[2];     // <= messageNum
-      echo "Message ID: $messageNum => $messageId\n";
-      if (!is_numeric($messageNum)) {
-        $messageNum = $lastMessageNumber + 1;
-        $lastMessageNumber += 1;
-        echo "*** We have a message ID problem ($messageId). Going to use $messageNum\n";
-      } else {
-        $lastMessageNumber = $messageNum;
-      }
-    } else {
-      $messageNum = $lastMessageNumber + 1;
-      $lastMessageNumber += 1;
-      echo "*** We have a message ID problem ($messageId). Going to use $messageNum\n";
-    }
-
-    $subject = $parser->getHeader('subject'); // <= subject
-    echo "Subject: $subject\n";
-    $dateRaw = trim($parser->getHeader('date'));
-    echo "Date: $dateRaw\n";
-    $dateSql = makeSqlDataFromData($dateRaw);
-    $body = $parser->getMessageBody('text');  // <= body
-
-    $rawHeaderFrom = $parser->getHeader('from');
-    $rawHeaderFrom = strtolower($rawHeaderFrom);
-    $rawHeaderFrom = str_replace('"', '', $rawHeaderFrom);  // remove double quotes
-
-    $email = extractEmail($rawHeaderFrom);
-    $fromObf = obfuscateEmail($email, $rawHeaderFrom);
-    echo "From: $email => $rawHeaderFrom\n";
-
-    if (is_numeric($messageNum)) {
-       if (in_array($messageNum, $message_ids)) {
-         echo "****** $messageNum has already been used\n";
-       } else {
-           if (array_key_exists($rawHeaderFrom, $userIds)) {
-               $uid = $userIds[$rawHeaderFrom];
-           } else {
-               $uid = addToUserTable($conn, $config->usertable, $rawHeaderFrom);
-               if ($uid == 0) {
-                   print_r($userIds);
-                   die("Should not return a 0\n");
-               }
-               $userIds[$rawHeaderFrom] = $uid;
-           }
-           addToMsgTable($conn, $config->messagetable, $messageNum, $subject, $fromObf, $dateSql, $body, $uid);
-       }
-    } else {
-      echo "****** $midp is not a valid id number\n";
-    }
-
+  if (is_numeric($messageId)) {
+     if (in_array($messageId, $message_ids)) {
+       echo "****** $messageId has already been used\n";
+     } else {
+         if (array_key_exists($email, $userIds)) {
+             $uid = $userIds[$email];
+         } else {
+             $uid = addToUserTable($conn, $config->usertable, $email);
+             if ($uid == 0) {
+                 print_r($userIds);
+                 die("Should not return a 0\n");
+             }
+             $userIds[$email] = $uid;
+         }
+         addToMsgTable($conn, $config->messagetable, $messageId, $subject, $fromObf, $dateSql, $body, $uid);
+     }
+  } else {
+    echo "****** $messageId is not a valid id number\n";
   }
 }
 
