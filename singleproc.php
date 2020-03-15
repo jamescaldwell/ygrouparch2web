@@ -52,9 +52,10 @@ $sqlUserTable = "CREATE TABLE IF NOT EXISTS `" . $config->usertable . "` (\n" .
   "`date` DATETIME NULL,\n" .
   "`subject` VARCHAR(250) NULL,\n" .
   "`body` TEXT NULL,\n" .
+  "`userid` int(11) NULL,\n" .
+  "`topicid` int(11) NULL,\n" .
   "`previd` int(11) NULL,\n" .
   "`nextid` int(11) NULL,\n" .
-  "`userid` int(11) NULL,\n" .
   "PRIMARY KEY (`id`),\n" .
   "INDEX `message_DATE` (`date` ASC),\n" .
   "INDEX `fk_ymessage_user_idx` (`userid` ASC),\n" .
@@ -98,6 +99,18 @@ foreach ($filesCollection as $emailFile) {
   echo "From: $email => $author\n";
 //  $fromObf = obfuscateEmail($email, $rawHeaderFrom);
   $fromObf = $email;
+  $topicId = $json->topicId;
+  if (!is_numeric($topicId)) {
+      $topicId = 0;
+  }
+  $nextId = $json->nextInTopic;
+    if (!is_numeric($nextId)) {
+        $nextId = 0;
+    }
+  $prevId = $json->prevInTopic;
+    if (!is_numeric($prevId)) {
+        $prevId = 0;
+    }
 
   if (is_numeric($messageId)) {
      if (in_array($messageId, $message_ids)) {
@@ -113,7 +126,7 @@ foreach ($filesCollection as $emailFile) {
              }
              $userIds[$email] = $uid;
          }
-         addToMsgTable($conn, $config->messagetable, $messageId, $subject, $fromObf, $dateSql, $body, $uid);
+         addToMsgTable($conn, $config->messagetable, $messageId, $subject, $fromObf, $dateSql, $body, $uid, $topicId, $prevId, $nextId);
      }
   } else {
     echo "****** $messageId is not a valid id number\n";
@@ -208,7 +221,7 @@ function addToUserTable($connection, $usertablename, $userName)
     echo (" user $userName insert:$insert_id\n");
     return $insert_id;
 }
-function addToMsgTable($connection, $msgtablename, $msgid, $subject, $from, $date, $body, $userid)
+function addToMsgTable($connection, $msgtablename, $msgid, $subject, $from, $date, $body, $userid, $topicId, $prevId, $nextId)
 {
     global $userIds;
   echo " INS $msgid with U:$userid\n";
@@ -219,7 +232,7 @@ function addToMsgTable($connection, $msgtablename, $msgid, $subject, $from, $dat
   $escSubj = $connection->real_escape_string($subject);
   $escBody = $connection->real_escape_string($body);
 
-  $sql = "INSERT INTO $msgtablename VALUES ($msgid, '$date', '$escSubj', '$escBody', 0, 0, $userid)";
+  $sql = "INSERT INTO $msgtablename VALUES ($msgid, '$date', '$escSubj', '$escBody', $userid, $topicId, $prevId, $nextId)";
 //  echo "\n  sql:" . substr($sql, 0, 160) . "\n\n";
 
   $res = $connection->query($sql);

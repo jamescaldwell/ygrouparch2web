@@ -1,5 +1,0 @@
-{
-    "require": {
-        "php-mime-mail-parser/php-mime-mail-parser": "^6.0"
-    }
-}
